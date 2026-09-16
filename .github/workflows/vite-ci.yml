@@ -1,0 +1,73 @@
+name: Vite CI (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: Node version to use
+        required: false
+        type: string
+        default: "20"
+      run_lint:
+        description: Whether to run `npm run lint`
+        required: false
+        type: boolean
+        default: true
+      run_format_check:
+        description: Whether to run `npm run format:check` (Prettier)
+        required: false
+        type: boolean
+        default: true
+      run_build:
+        description: Whether to run `npm run build` (typecheck + build)
+        required: false
+        type: boolean
+        default: true
+      package_manager:
+        description: Package manager to use (npm | pnpm | yarn)
+        required: false
+        type: string
+        default: npm
+
+jobs:
+  lint:
+    name: Lint (ESLint)
+    if: ${{ inputs.run_lint }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: ${{ inputs.package_manager }}
+      - run: ${{ inputs.package_manager }} ci
+      - run: ${{ inputs.package_manager }} run lint
+
+  format:
+    name: Format (Prettier)
+    if: ${{ inputs.run_format_check }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: ${{ inputs.package_manager }}
+      - run: ${{ inputs.package_manager }} ci
+      - run: ${{ inputs.package_manager }} run format:check
+
+  build:
+    name: Typecheck + Build
+    if: ${{ inputs.run_build }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: ${{ inputs.package_manager }}
+      - run: ${{ inputs.package_manager }} ci
+      - run: ${{ inputs.package_manager }} run build

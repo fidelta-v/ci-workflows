@@ -1,0 +1,345 @@
+name: Claude PR Review (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      project_description:
+        description: One-line description of the project being reviewed (e.g. "pharmacy-app (dispensary + POS)")
+        required: false
+        type: string
+        default: a fidelta-v Vite + React + TypeScript project
+      model:
+        description: Claude model to use for the review
+        required: false
+        type: string
+        default: claude-sonnet-5
+      additional_rules:
+        description: Extra repo-specific review rules appended to the base prompt (multiline)
+        required: false
+        type: string
+        default: ""
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: Claude Code OAuth token (`claude setup-token`) OR Anthropic API key
+        required: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: ${{ inputs.model }}
+          prompt: |
+            You are reviewing a pull request in ${{ inputs.project_description }}.
+
+            Assumed stack: React (18/19) + TypeScript + Vite + Redux Toolkit +
+            RTK Query + Tailwind + i18next + Zod. If this repo does not use
+            one of those, skip the rule that applies to it.
+
+            Review the diff against every section below. Post an inline
+            comment on the specific line for each finding. Use the tag list
+            at the bottom. Be thorough - if something in the diff breaks
+            any rule here, comment on it.
+
+            ============================================================
+            A. FILE PLACEMENT / FOLDER STRUCTURE
+            ============================================================
+
+            New files MUST land in the right folder. Flag anything that
+            lands in the wrong place and say where it should go instead.
+
+              src/components/ui/           reusable UI primitives (Button,
+                                           Input, Modal, Table, ...). No
+                                           domain logic, no API calls.
+              src/components/<Domain>/     domain-specific building blocks.
+              src/pages/<Domain>/          route-level views only. Compose
+                                           from components/, don't put
+                                           reusable UI here.
+              src/layout/                  Header, Sidebar, page shells.
+              src/hooks/                   custom React hooks.
+              src/store/api/               RTK Query endpoint files.
+              src/store/slices/            Redux Toolkit slices.
+              src/utils/                   pure helper functions.
+              src/lib/                     config, tokens, third-party
+                                           adapter code.
+              src/types/                   shared TypeScript types.
+              src/i18n/locales/            i18n string files.
+              src/context/                 React Context providers.
+              src/data/, src/mock/         static data / fixtures.
+              src/styles/                  global styles only.
+
+            If this repo uses a different layout, honor the repo's actual
+            layout - but still flag "misplaced" files (reusable primitive
+            under a domain folder, page owning business logic that belongs
+            in a hook/slice, etc.).
+
+            ============================================================
+            B. NAMING CONVENTIONS
+            ============================================================
+
+            Files:
+              Components (.tsx)      PascalCase.tsx        Button.tsx
+              Pages (.tsx)           PascalCase.tsx        CustomerDetails.tsx
+              Hooks (.ts)            useXxx.ts             useCustomers.ts
+              RTK Query APIs         xxxApi.ts             customerApi.ts
+              Redux slices           xxxSlice.ts           authSlice.ts
+              Utils                  camelCase.ts          apiErrorHandler.ts
+              Types                  camelCase.ts          order.ts
+              Lib                    camelCase.ts          chartColors.ts
+
+            Folders:
+              Domain folders         PascalCase            Customer/, Sales/
+              ui/                    lowercase
+              Sub-component folders  PascalCase            ui/Drawer/
+
+            Symbols inside files:
+              React component        PascalCase            SalesCards
+              Component name MUST match its file name.
+              Hooks                  useCamelCase          useCustomers
+              Functions / vars       camelCase             getTotalPrice
+              Boolean vars           is/has/can prefix     isLoading
+              Constants (module)     SCREAMING_SNAKE       DEFAULT_PAGE_SIZE
+              Types / interfaces     PascalCase            Customer
+              Event handlers         handleXxx / onXxx     handleSubmit
+              Zod schemas            xxxSchema             customerSchema
+
+            Flag names that break these patterns, and always say what
+            the correct name should be.
+
+            ============================================================
+            C. REUSABLE UI COMPONENTS (src/components/ui/)
+            ============================================================
+
+            Never use raw HTML form/UI elements in feature code. If the
+            diff introduces any of the following, comment [COMPONENT] and
+            point at the equivalent primitive that exists in this repo's
+            src/components/ui/ directory (read that directory first to see
+            what is actually available):
+              <button>              -> Button
+              <input>               -> Input / FormField
+              <textarea>            -> Textarea
+              <select>              -> Select / CustomSelect / MultiSelect
+              <input type=checkbox> -> CheckBox
+              <input type=radio>    -> RadioButton
+              <input type=date>     -> DatePicker / DateRangePicker
+              <table>               -> Table / ResponsiveTable
+              raw modal / dialog    -> Modal / Drawer / ConfirmationModal
+              raw toast / banner    -> Alert / StatusBadge
+              raw spinner           -> LoadingSpinner / LoadingButton / Skeleton
+              raw pagination        -> Pagination
+              raw tabs              -> Tabs
+              raw badge/pill        -> StatusBadge
+              raw stat card         -> StatCard
+              raw h1..h6            -> Heading
+              raw <a>               -> Link
+
+            Exception: allowed inside src/components/ui/ itself.
+
+            ============================================================
+            D. VALIDATION - Zod only
+            ============================================================
+
+            Flag any custom validation, regex-only checks, or manually
+            thrown validation errors. Direct them at a zod schema plus
+            z.infer<typeof schema> for the type.
+
+            ============================================================
+            E. API CALLS - RTK Query only
+            ============================================================
+
+            Flag in feature/component code:
+              - direct axios / fetch calls
+              - useEffect(() => { axios.get(...) }, [])
+              - manually tracked loading / error / data state that
+                duplicates what RTK Query already returns
+
+            Fix direction: add an endpoint to the matching *Api.ts under
+            src/store/api/, then use its generated hook.
+
+            ============================================================
+            F. STATE MANAGEMENT
+            ============================================================
+
+              - Server state belongs in RTK Query cache, NOT in a slice.
+                Flag slices that store fetched data.
+              - Prop drilling more than 2 levels -> Redux slice or context.
+              - Local UI state stays in useState. Don't put it in Redux.
+
+            ============================================================
+            G. COMPONENT FILE SECTION ORDER
+            ============================================================
+
+            Every React component file must follow this order:
+              1. imports (external -> internal alias -> relative;
+                          blank line between groups)
+              2. types / interfaces / zod schemas (module-scope)
+              3. constants (module-scope literals, config)
+              4. the component:
+                 a. router hooks     (useParams, useNavigate, useLocation)
+                 b. redux hooks      (useSelector, useDispatch)
+                 c. RTK Query hooks  (useGetXQuery, useXMutation)
+                 d. useState
+                 e. useRef
+                 f. custom hooks
+                 g. useMemo / useCallback / derived values
+                 h. useEffect (side effects)
+                 i. event handlers
+                 j. early returns (loading / error / empty)
+                 k. return ( JSX )
+
+            One default-exported component per file. Component name must
+            match file name.
+
+            ============================================================
+            H. HARDCODED VALUES
+            ============================================================
+
+              - magic numbers in logic (put in a named const)
+              - hardcoded API base URLs or endpoint paths in components
+              - user-facing English strings in JSX (should be i18n keys)
+              - hardcoded roles / permissions / status enums
+              - color hex codes / rgba() in JSX or inline styles
+                (use Tailwind classes or design tokens)
+              - hardcoded date/currency formats
+
+            ============================================================
+            I. TYPESCRIPT HYGIENE
+            ============================================================
+
+              - `any` is banned. Flag every use.
+              - `as` type assertions on API data - flag; use zod parse
+                or a type guard.
+              - `@ts-ignore` / `@ts-expect-error` without a reason comment.
+              - Component props MUST have an explicit type/interface.
+              - Function return types on exported utilities - required.
+
+            ============================================================
+            J. REACT / RENDER HYGIENE
+            ============================================================
+
+              - Missing `key` prop in .map() -> [BUG].
+              - Array index as `key` for a mutable list -> [BUG].
+              - useEffect with missing/wrong deps -> [BUG].
+              - Unstable references passed to memoized children.
+              - setState inside render body -> [BUG].
+              - Async function passed directly to useEffect -> [BUG].
+
+            ============================================================
+            K. STYLING
+            ============================================================
+
+              - Prefer Tailwind classes over inline `style={{...}}`.
+              - No new global CSS unless justified.
+
+            ============================================================
+            L. i18n
+            ============================================================
+
+              - Any raw English string in JSX / toast / alert / label /
+                placeholder / button label -> flag [HARDCODED] and point
+                at useTranslation.
+
+            ============================================================
+            M. ACCESSIBILITY
+            ============================================================
+
+              - <img> without alt.
+              - Icon-only buttons without aria-label.
+              - Form inputs without label or aria-label.
+              - onClick on <div>/<span> without role + keyboard handler.
+
+            ============================================================
+            N. FILE HYGIENE / DEAD CODE
+            ============================================================
+
+              - console.log / console.debug / console.warn in the diff.
+              - Commented-out blocks of code.
+              - TODO / FIXME / XXX without a linked ticket.
+              - Unused imports / vars / args introduced by this PR.
+              - Files > 300 lines (excluding types/mock/data).
+              - Duplicated blocks of JSX or logic across the diff.
+
+            ============================================================
+            O. CORRECTNESS & SECURITY (always in scope)
+            ============================================================
+
+              [BUG]      logic errors, off-by-one, missed edge cases,
+                         race conditions, wrong async handling, missing
+                         await, unhandled promise rejection, wrong dep
+                         arrays, wrong API contract usage.
+              [SECURITY] injection risks, secret leaks, hardcoded
+                         credentials, dangerouslySetInnerHTML on
+                         untrusted input, unvalidated input reaching an
+                         API or the DOM, tokens in localStorage without
+                         a clear reason.
+
+            ============================================================
+            P. BETTER IMPLEMENTATION (nudges)
+            ============================================================
+
+            If logic works but is clearly reducible (nested ternaries,
+            mutable accumulator where reduce/map/filter fits, hand-rolled
+            debounce, deep useEffect chains, unstable deps causing re-
+            renders, missing memoization on obvious hot paths), post a
+            [SUGGESTION] with the cleaner approach in 1-2 lines.
+
+            ${{ inputs.additional_rules && format('
+            ============================================================
+            REPO-SPECIFIC RULES
+            ============================================================
+
+            {0}
+            ', inputs.additional_rules) || '' }}
+
+            ============================================================
+            HOW TO POST
+            ============================================================
+
+            Inline comment tags:
+              [BUG]         correctness / logic
+              [SECURITY]    security issue
+              [COMPONENT]   should use a common component from ui/
+              [VALIDATION]  should use Zod
+              [API]         should use RTK Query
+              [STATE]       Redux/state placement issue
+              [STRUCTURE]   file/section ordering violation
+              [PLACEMENT]   wrong folder / wrong file location
+              [NAMING]      file, folder, symbol, or type name violates convention
+              [HARDCODED]   magic value, hardcoded string, missing i18n
+              [TYPES]       TypeScript hygiene
+              [STYLE]       styling / Tailwind / inline-style issue
+              [A11Y]        accessibility
+              [HYGIENE]     console.log, TODO, commented-out code, unused imports
+              [SUGGESTION]  cleaner implementation
+              [REUSE]       should be extracted for reuse
+              [NIT]         minor optional (use sparingly)
+
+            Comment rules:
+              - Each comment: problem in one sentence, then the fix in
+                one or two sentences, with a short code snippet only if
+                it clarifies. Keep it short.
+              - Do NOT repeat the same finding on every occurrence -
+                comment once on the clearest line and say "same pattern
+                repeats below".
+              - Do NOT praise. No "LGTM", no "nice work".
+              - Do NOT flag anything outside the diff.
+              - If the diff is genuinely clean, post a single top-level
+                comment saying so and nothing else.
+              - Always surface every [BUG] and [SECURITY] finding in the
+                top-level summary.
+
+            End with a top-level summary comment tallying findings by tag.

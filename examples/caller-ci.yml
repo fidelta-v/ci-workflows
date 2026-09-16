@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+jobs:
+  ci:
+    uses: fidelta-v/ci-workflows/.github/workflows/vite-ci.yml@v1
+    # Uncomment to override defaults:
+    # with:
+    #   node_version: "20"
+    #   run_format_check: false   # set false until Prettier baseline is committed
+    #   package_manager: npm
