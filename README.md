@@ -57,6 +57,26 @@ jobs:
 | Secret | Required | Description |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | yes | Claude Code OAuth token from `claude setup-token` (Pro/Max) OR an Anthropic API key. |
+| `GOOGLE_CHAT_WEBHOOK_URL` | no | Google Chat incoming-webhook URL. If set, a short review summary is posted to the space after every PR review. |
+
+### Google Chat notifications
+
+To get a summary card in a Google Chat space after every review:
+
+1. In the target space, click the space name → **Apps & integrations** → **Webhooks** → **Add webhook**.
+2. Name it (e.g. "Claude PR Reviews"), optionally add an avatar, click **Save**.
+3. Copy the generated webhook URL.
+4. Add it as a repo secret named `GOOGLE_CHAT_WEBHOOK_URL` in the consumer repo.
+5. Pass it through in the caller (see the commented line in the caller example).
+
+The bot posts:
+```
+✅ Claude review complete
+Repo: fidelta-v/pharmacy-app
+PR: #42 Add sales list filters
+Author: mathew
+```
+with the PR link clickable. If the review fails, the emoji flips to ❌.
 
 ## Caller: Vite CI (lint + format + build)
 

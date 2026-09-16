@@ -22,6 +22,9 @@ on:
       CLAUDE_CODE_OAUTH_TOKEN:
         description: Claude Code OAuth token (`claude setup-token`) OR Anthropic API key
         required: true
+      GOOGLE_CHAT_WEBHOOK_URL:
+        description: Optional Google Chat incoming-webhook URL to post a review summary to
+        required: false
 
 jobs:
   review:
@@ -39,6 +42,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Claude Code review
+        id: review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -343,3 +347,37 @@ jobs:
                 top-level summary.
 
             End with a top-level summary comment tallying findings by tag.
+
+      - name: Notify Google Chat
+        if: ${{ always() && github.event.pull_request.number }}
+        env:
+          WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          REVIEW_OUTCOME: ${{ steps.review.outcome }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "GOOGLE_CHAT_WEBHOOK_URL not set — skipping Chat notification."
+            exit 0
+          fi
+
+          case "$REVIEW_OUTCOME" in
+            success)   emoji="✅"; status_text="review complete" ;;
+            failure)   emoji="❌"; status_text="review failed"   ;;
+            cancelled) emoji="⚪"; status_text="review cancelled" ;;
+            *)         emoji="ℹ️"; status_text="review ran ($REVIEW_OUTCOME)" ;;
+          esac
+
+          text="${emoji} *Claude ${status_text}*
+          *Repo:* \`${REPO}\`
+          *PR:* <${PR_URL}|#${PR_NUM} ${PR_TITLE}>
+          *Author:* ${PR_AUTHOR}"
+
+          payload=$(jq -n --arg text "$text" '{text: $text}')
+
+          curl -sS -X POST "$WEBHOOK" \
+            -H "Content-Type: application/json; charset=UTF-8" \
+            -d "$payload"

@@ -12,3 +12,5 @@ jobs:
       project_description: "REPLACE-ME (one-line context about this repo)"
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # Optional: post a summary to Google Chat after the review
+      # GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
