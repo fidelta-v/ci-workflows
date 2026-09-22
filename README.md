@@ -33,6 +33,13 @@ on:
 
 jobs:
   review:
+    # Required if the org's default GITHUB_TOKEN permission is "restricted".
+    # The reusable workflow needs these to post inline PR comments and use OAuth.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
     uses: fidelta-v/ci-workflows/.github/workflows/claude-review.yml@v1
     with:
       project_description: "my-repo-name (one-line context)"
