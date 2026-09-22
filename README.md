@@ -31,10 +31,17 @@ on:
     types: [opened, synchronize, reopened]
     branches: [main]
 
+# Required if the org's default GITHUB_TOKEN permission is "restricted".
+# Both the workflow-level and job-level permissions blocks are needed;
+# the job block can only grant up to what the workflow allows.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
 jobs:
   review:
-    # Required if the org's default GITHUB_TOKEN permission is "restricted".
-    # The reusable workflow needs these to post inline PR comments and use OAuth.
     permissions:
       contents: read
       pull-requests: write

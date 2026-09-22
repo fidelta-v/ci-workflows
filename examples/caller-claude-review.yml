@@ -5,10 +5,18 @@ on:
     types: [opened, synchronize, reopened]
     branches: [main]
 
+# Required if the org's default GITHUB_TOKEN permission is "restricted".
+# Job-level permissions can only be granted up to what the workflow top-level
+# allows, so both must be set. The reusable workflow needs these to post
+# inline PR comments and use OAuth.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
 jobs:
   review:
-    # Required if the org's default GITHUB_TOKEN permission is "restricted".
-    # The reusable workflow needs these to post inline PR comments and use OAuth.
     permissions:
       contents: read
       pull-requests: write
